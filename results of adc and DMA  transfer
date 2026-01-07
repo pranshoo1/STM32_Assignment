@@ -1,0 +1,125 @@
+#include "stm32f0xx_hal.h"
+
+TIM_HandleTypeDef tmr2;
+ADC_HandleTypeDef adc1;
+DMA_HandleTypeDef dma1;
+
+#define BUF_LEN 100
+uint16_t buf[BUF_LEN];
+
+void SYSCLK(void);
+static void GPIOX(void);
+static void TIMX(void);
+static void ADCX(void);
+static void DMAX(void);
+
+int main(void)
+{
+    HAL_Init();
+    SYSCLK();
+    GPIOX();
+    DMAX();
+    ADCX();
+    TIMX();
+
+    HAL_ADC_Start_DMA(&adc1,(uint32_t*)buf,BUF_LEN);
+    HAL_TIM_Base_Start(&tmr2);
+
+    while(1)
+    {
+        // chill
+    }
+}
+
+static void TIMX(void)
+{
+    TIM_MasterConfigTypeDef m={0};
+    tmr2.Instance=TIM2;
+    tmr2.Init.Prescaler=7999;
+    tmr2.Init.CounterMode=TIM_COUNTERMODE_UP;
+    tmr2.Init.Period=9;
+    tmr2.Init.ClockDivision=TIM_CLOCKDIVISION_DIV1;
+    tmr2.Init.AutoReloadPreload=TIM_AUTORELOAD_PRELOAD_DISABLE;
+    HAL_TIM_Base_Init(&tmr2);
+    m.MasterOutputTrigger=TIM_TRGO_UPDATE;
+    m.MasterSlaveMode=TIM_MASTERSLAVEMODE_DISABLE;
+    HAL_TIMEx_MasterConfigSynchronization(&tmr2,&m);
+}
+
+static void ADCX(void)
+{
+    ADC_ChannelConfTypeDef c={0};
+    adc1.Instance=ADC1;
+    adc1.Init.Resolution=ADC_RESOLUTION_12B;
+    adc1.Init.DataAlign=ADC_DATAALIGN_RIGHT;
+    adc1.Init.ScanConvMode=ADC_SCAN_DISABLE;
+    adc1.Init.ContinuousConvMode=DISABLE;
+    adc1.Init.DiscontinuousConvMode=DISABLE;
+    adc1.Init.ExternalTrigConv=ADC_EXTERNALTRIGCONV_T2_TRGO;
+    adc1.Init.ExternalTrigConvEdge=ADC_EXTERNALTRIGCONVEDGE_RISING;
+    HAL_ADC_Init(&adc1);
+    c.Channel=ADC_CHANNEL_0;
+    c.Rank=ADC_RANK_CHANNEL_NUMBER;
+    c.SamplingTime=ADC_SAMPLETIME_41CYCLES_5;
+    HAL_ADC_ConfigChannel(&adc1,&c);
+}
+
+static void DMAX(void)
+{
+    __HAL_RCC_DMA1_CLK_ENABLE();
+    dma1.Instance=DMA1_Channel1;
+    dma1.Init.Direction=DMA_PERIPH_TO_MEMORY;
+    dma1.Init.PeriphInc=DMA_PINC_DISABLE;
+    dma1.Init.MemInc=DMA_MINC_ENABLE;
+    dma1.Init.PeriphDataAlignment=DMA_PDATAALIGN_HALFWORD;
+    dma1.Init.MemDataAlignment=DMA_MDATAALIGN_HALFWORD;
+    dma1.Init.Mode=DMA_CIRCULAR;
+    dma1.Init.Priority=DMA_PRIORITY_MEDIUM;
+    HAL_DMA_Init(&dma1);
+    __HAL_LINKDMA(&adc1,DMA_Handle,dma1);
+    HAL_NVIC_SetPriority(DMA1_Channel1_IRQn,0,0);
+    HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+}
+
+static void GPIOX(void)
+{
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    GPIO_InitTypeDef g={0};
+    g.Pin=GPIO_PIN_5;
+    g.Mode=GPIO_MODE_OUTPUT_PP;
+    g.Pull=GPIO_NOPULL;
+    g.Speed=GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOA,&g);
+}
+
+void DMA1_Channel1_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(&dma1);
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* h)
+{
+    HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_5);
+}
+
+void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef* h)
+{
+    // nothing
+}
+
+void SYSCLK(void)
+{
+    RCC_OscInitTypeDef o={0};
+    RCC_ClkInitTypeDef c={0};
+    o.OscillatorType=RCC_OSCILLATORTYPE_HSI;
+    o.HSIState=RCC_HSI_ON;
+    o.HSICalibrationValue=RCC_HSICALIBRATION_DEFAULT;
+    o.PLL.PLLState=RCC_PLL_NONE;
+    HAL_RCC_OscConfig(&o);
+    c.ClockType=RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK|RCC_CLOCKTYPE_PCLK1;
+    c.SYSCLKSource=RCC_SYSCLKSOURCE_HSI;
+    c.AHBCLKDivider=RCC_SYSCLK_DIV1;
+    c.APB1CLKDivider=RCC_HCLK_DIV1;
+    HAL_RCC_ClockConfig(&c,FLASH_LATENCY_0);
+}
+ 
